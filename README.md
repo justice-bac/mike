@@ -123,3 +123,103 @@ npm run build --prefix backend
 npm run build --prefix frontend
 npm run lint --prefix frontend
 ```
+
+## Deploy On Fly.io
+
+This repo deploys cleanly to Fly.io as two apps:
+
+- `mike-api` for the Express backend
+- `mike-web` for the Next.js frontend
+
+The backend and frontend now each include a `fly.toml`, Dockerfile, and `.dockerignore`.
+
+### 1. Rebuild The Devcontainer And Authenticate
+
+The devcontainer installs `flyctl`. Rebuild/reopen the devcontainer after pulling the latest changes, then authenticate inside the container:
+
+```bash
+fly auth login
+```
+
+### 2. Create The Apps
+
+Create one Fly app for each service from inside the devcontainer. Replace the names if you want different app names:
+
+```bash
+fly apps create mike-api
+fly apps create mike-web
+```
+
+If you want a specific region, set it during launch or update `primary_region` in each `fly.toml`.
+
+### 3. Set Backend Secrets
+
+Set the backend secrets from the `backend/` directory inside the devcontainer:
+
+```bash
+cd backend
+fly secrets set \
+	FRONTEND_URL=https://mike-web.fly.dev \
+	DOWNLOAD_SIGNING_SECRET=replace-with-a-random-32-byte-hex-string \
+	SUPABASE_URL=https://your-project.supabase.co \
+	SUPABASE_SECRET_KEY=your-supabase-service-role-key \
+	R2_ENDPOINT_URL=https://your-account-id.r2.cloudflarestorage.com \
+	R2_ACCESS_KEY_ID=your-r2-access-key \
+	R2_SECRET_ACCESS_KEY=your-r2-secret-key \
+	R2_BUCKET_NAME=mike \
+	USER_API_KEYS_ENCRYPTION_SECRET=your-long-random-secret \
+	GEMINI_API_KEY=your-gemini-key \
+	ANTHROPIC_API_KEY=your-anthropic-key \
+	OPENAI_API_KEY=your-openai-key \
+	RESEND_API_KEY=your-resend-key \
+	--app mike-api
+```
+
+Only set provider keys you actually want globally enabled.
+
+### 4. Set Frontend Secrets
+
+Set the frontend runtime variables from the `frontend/` directory inside the devcontainer:
+
+```bash
+cd ../frontend
+fly secrets set \
+	NEXT_PUBLIC_SITE_URL=https://mike-web.fly.dev \
+	NEXT_PUBLIC_API_BASE_URL=https://mike-api.fly.dev \
+	NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co \
+	NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY=your-supabase-anon-key \
+	SUPABASE_SECRET_KEY=your-supabase-service-role-key \
+	R2_ENDPOINT_URL=https://your-account-id.r2.cloudflarestorage.com \
+	R2_ACCESS_KEY_ID=your-r2-access-key \
+	R2_SECRET_ACCESS_KEY=your-r2-secret-key \
+	R2_BUCKET_NAME=mike \
+	--app mike-web
+```
+
+### 5. Deploy
+
+Deploy the backend first, then the frontend, from inside the devcontainer:
+
+```bash
+cd /path/to/repo/backend
+fly deploy --remote-only
+
+cd /path/to/repo/frontend
+fly deploy --remote-only
+```
+
+### 6. Verify
+
+Check both health endpoints after deploy:
+
+```bash
+curl https://mike-api.fly.dev/health
+curl https://mike-web.fly.dev/api/health
+```
+
+### Notes
+
+- The backend image installs LibreOffice because document conversion depends on it.
+- The frontend uses Next.js standalone output and includes `sharp` for production image optimization.
+- The devcontainer includes both LibreOffice and `flyctl`, so local conversion and Fly deployment work from the same environment.
+- If you attach custom domains, update `FRONTEND_URL`, `NEXT_PUBLIC_SITE_URL`, and `NEXT_PUBLIC_API_BASE_URL` to match those domains.

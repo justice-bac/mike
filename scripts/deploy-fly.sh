@@ -428,6 +428,24 @@ has_local_builder() {
     command -v docker >/dev/null 2>&1 || command -v podman >/dev/null 2>&1
 }
 
+ensure_fly_auth() {
+    if [[ -n "${FLY_API_TOKEN:-}" ]]; then
+        export FLY_ACCESS_TOKEN="${FLY_ACCESS_TOKEN:-${FLY_API_TOKEN}}"
+        return 0
+    fi
+
+    if [[ -n "${FLY_ACCESS_TOKEN:-}" ]]; then
+        export FLY_API_TOKEN="${FLY_API_TOKEN:-${FLY_ACCESS_TOKEN}}"
+        return 0
+    fi
+
+    if flyctl auth whoami >/dev/null 2>&1; then
+        return 0
+    fi
+
+    die "Fly auth not found. Run 'flyctl auth login' locally or set FLY_API_TOKEN for CI."
+}
+
 check_fly_network() {
     local log_file
     local doctor_output
@@ -791,7 +809,7 @@ main() {
         return 0
     fi
 
-    flyctl auth whoami >/dev/null 2>&1 || die "Fly auth not found. Run 'flyctl auth login' first."
+    ensure_fly_auth
     check_fly_network
 
     should_write_envs=0

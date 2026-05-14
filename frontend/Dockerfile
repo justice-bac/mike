@@ -7,7 +7,6 @@ RUN npm ci
 
 COPY next.config.ts ./
 COPY tsconfig.json ./
-COPY next-env.d.ts ./
 COPY postcss.config.mjs ./
 COPY eslint.config.mjs ./
 COPY components.json ./

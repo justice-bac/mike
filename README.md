@@ -126,100 +126,127 @@ npm run lint --prefix frontend
 
 ## Deploy On Fly.io
 
-This repo deploys cleanly to Fly.io as two apps:
-
-- `mike-api` for the Express backend
-- `mike-web` for the Next.js frontend
-
-The backend and frontend now each include a `fly.toml`, Dockerfile, and `.dockerignore`.
+The devcontainer includes `flyctl`, and the recommended path is the interactive deploy script at `scripts/deploy-fly.sh`.
 
 ### 1. Rebuild The Devcontainer And Authenticate
 
-The devcontainer installs `flyctl`. Rebuild/reopen the devcontainer after pulling the latest changes, then authenticate inside the container:
+Rebuild/reopen the devcontainer after pulling the latest changes, then authenticate inside the container:
 
 ```bash
-fly auth login
+flyctl auth login
 ```
 
-### 2. Create The Apps
+### 2. Run The Deploy Script
 
-Create one Fly app for each service from inside the devcontainer. Replace the names if you want different app names:
+From the repo root:
 
 ```bash
-fly apps create mike-api
-fly apps create mike-web
+./scripts/deploy-fly.sh
 ```
 
-If you want a specific region, set it during launch or update `primary_region` in each `fly.toml`.
+The script will:
 
-### 3. Set Backend Secrets
+- prompt for an app prefix and create `${prefix}-mike-api` / `${prefix}-mike-web` or unprefixed `mike-api` / `mike-web`
+- read shared values from `backend/.env`, `frontend/.env.local`, and the current shell environment
+- derive the Fly URLs automatically instead of reusing your local `localhost` values
+- generate `DOWNLOAD_SIGNING_SECRET` and `USER_API_KEYS_ENCRYPTION_SECRET` when they are missing
+- prompt for any required values that are still missing
+- optionally write non-derived values back into your ignored local env files so future deploys reuse the same secrets
+- create the Fly apps if they do not exist yet
+- retry transient Fly remote-builder failures automatically, first with `--recreate-builder` and then with Depot if needed
+- stage secrets once and then deploy backend first, frontend second
 
-Set the backend secrets from the `backend/` directory inside the devcontainer:
+The script uses temporary Fly config files, so you do not need to edit `backend/fly.toml` or `frontend/fly.toml` when your app names or region change.
+
+If deploys still fail at `Waiting for depot builder...`, `error reporting health`, or `connection reset by peer` even after the script retries, treat that as a Fly builder-region outage. The next fix is usually in the Fly dashboard under `Org > Settings > App Builders > Configure`: move the builder region away from `YYZ` to a different region such as `ORD` or `IAD`, then rerun the script.
+
+### 3. Optional Flags
 
 ```bash
-cd backend
-fly secrets set \
-	FRONTEND_URL=https://mike-web.fly.dev \
-	DOWNLOAD_SIGNING_SECRET=replace-with-a-random-32-byte-hex-string \
-	SUPABASE_URL=https://your-project.supabase.co \
-	SUPABASE_SECRET_KEY=your-supabase-service-role-key \
-	R2_ENDPOINT_URL=https://your-account-id.r2.cloudflarestorage.com \
-	R2_ACCESS_KEY_ID=your-r2-access-key \
-	R2_SECRET_ACCESS_KEY=your-r2-secret-key \
-	R2_BUCKET_NAME=mike \
-	USER_API_KEYS_ENCRYPTION_SECRET=your-long-random-secret \
-	GEMINI_API_KEY=your-gemini-key \
-	ANTHROPIC_API_KEY=your-anthropic-key \
-	OPENAI_API_KEY=your-openai-key \
-	RESEND_API_KEY=your-resend-key \
-	--app mike-api
+./scripts/deploy-fly.sh --prefix juleskuehn
+./scripts/deploy-fly.sh --prefix juleskuehn --region yyz
+./scripts/deploy-fly.sh --prefix juleskuehn --org personal --dry-run
+./scripts/deploy-fly.sh --prefix juleskuehn --build-strategy depot
+./scripts/deploy-fly.sh --prefix juleskuehn --build-strategy remote
+./scripts/deploy-fly.sh --yes --prefix juleskuehn --no-write-env-files
 ```
 
-Only set provider keys you actually want globally enabled.
-
-### 4. Set Frontend Secrets
-
-Set the frontend runtime variables from the `frontend/` directory inside the devcontainer:
-
-```bash
-cd ../frontend
-fly secrets set \
-	NEXT_PUBLIC_SITE_URL=https://mike-web.fly.dev \
-	NEXT_PUBLIC_API_BASE_URL=https://mike-api.fly.dev \
-	NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co \
-	NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY=your-supabase-anon-key \
-	SUPABASE_SECRET_KEY=your-supabase-service-role-key \
-	R2_ENDPOINT_URL=https://your-account-id.r2.cloudflarestorage.com \
-	R2_ACCESS_KEY_ID=your-r2-access-key \
-	R2_SECRET_ACCESS_KEY=your-r2-secret-key \
-	R2_BUCKET_NAME=mike \
-	--app mike-web
-```
-
-### 5. Deploy
-
-Deploy the backend first, then the frontend, from inside the devcontainer:
-
-```bash
-cd /path/to/repo/backend
-fly deploy --remote-only
-
-cd /path/to/repo/frontend
-fly deploy --remote-only
-```
-
-### 6. Verify
+### 4. Verify
 
 Check both health endpoints after deploy:
 
 ```bash
-curl https://mike-api.fly.dev/health
-curl https://mike-web.fly.dev/api/health
+curl https://your-prefix-mike-api.fly.dev/health
+curl https://your-prefix-mike-web.fly.dev/api/health
 ```
+
+If you deploy without a prefix, those URLs become `https://mike-api.fly.dev/health` and `https://mike-web.fly.dev/api/health`.
+
+### 5. Manual Fallback
+
+If you skip the script, pass explicit `--app` values to `flyctl secrets set` and `flyctl deploy`, or update the `app =` value in `backend/fly.toml` and `frontend/fly.toml` yourself.
+
+### 6. GitHub Actions Fallback
+
+If Fly deploys from the devcontainer still fail with `Waiting for depot builder...`, `connection reset by peer`, WireGuard gateway failures, or TLS interception on `*.gateway.6pn.dev`, use the GitHub Actions workflow in `.github/workflows/deploy-fly.yml` instead. It runs on `ubuntu-latest`, where Docker is available, and calls the same deploy script with `--build-strategy local` so it does not depend on Fly's remote/depot builders.
+
+After rebuilding the devcontainer so `gh` is available, avoid browser auth on this network. Use either a GitHub personal access token in the terminal or `gh auth login --with-token`.
+
+Preferred terminal-only path:
+
+```bash
+export GH_TOKEN=your-github-token
+```
+
+Alternative if you want `gh` to store the token locally:
+
+```bash
+gh auth login --with-token
+```
+
+Then sync your local deployment values into GitHub repository secrets:
+
+```bash
+./scripts/sync-github-secrets.sh
+```
+
+The helper reads `backend/.env`, `frontend/.env.local`, the current shell environment, and `flyctl auth token`, generates `DOWNLOAD_SIGNING_SECRET` and `USER_API_KEYS_ENCRYPTION_SECRET` if missing, and uploads the result with `gh secret set`. It accepts `GH_TOKEN` / `GITHUB_TOKEN`, stored `gh` auth, or a direct hidden prompt in the terminal.
+
+Optional flags:
+
+```bash
+./scripts/sync-github-secrets.sh --dry-run
+./scripts/sync-github-secrets.sh --repo owner/repo
+./scripts/sync-github-secrets.sh --yes --no-write-env-files
+```
+
+The workflow expects these repository secrets:
+
+- `FLY_API_TOKEN`
+- `SUPABASE_URL`
+- `NEXT_PUBLIC_SUPABASE_URL`
+- `SUPABASE_SECRET_KEY`
+- `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY`
+- `R2_ENDPOINT_URL`
+- `R2_ACCESS_KEY_ID`
+- `R2_SECRET_ACCESS_KEY`
+- `R2_BUCKET_NAME`
+- `DOWNLOAD_SIGNING_SECRET`
+- `USER_API_KEYS_ENCRYPTION_SECRET`
+
+Optional repository secrets:
+
+- `GEMINI_API_KEY`
+- `ANTHROPIC_API_KEY`
+- `OPENAI_API_KEY`
+- `RESEND_API_KEY`
+
+Then run the workflow manually from the GitHub Actions tab and provide the same prefix and region you would pass locally.
 
 ### Notes
 
 - The backend image installs LibreOffice because document conversion depends on it.
 - The frontend uses Next.js standalone output and includes `sharp` for production image optimization.
-- The devcontainer includes both LibreOffice and `flyctl`, so local conversion and Fly deployment work from the same environment.
+- The devcontainer includes LibreOffice, `flyctl`, and `gh`, so local conversion, GitHub secret sync, and Fly deployment tooling live in the same environment.
+- Some VPN or corporate-network environments block UDP WireGuard and MITM-intercept Fly gateway HTTPS. In that case, deploying from this devcontainer can fail even when app config is correct; the GitHub Actions workflow is the reliable fallback.
 - If you attach custom domains, update `FRONTEND_URL`, `NEXT_PUBLIC_SITE_URL`, and `NEXT_PUBLIC_API_BASE_URL` to match those domains.

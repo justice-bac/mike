@@ -1,5 +1,5 @@
 app = "mike-web"
-primary_region = "iad"
+primary_region = "yyz"
 
 [build]
   dockerfile = "Dockerfile"

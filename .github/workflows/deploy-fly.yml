@@ -1,0 +1,72 @@
+name: Deploy to Fly
+
+on:
+  workflow_dispatch:
+    inputs:
+      prefix:
+        description: App prefix. Leave blank for mike-api / mike-web.
+        required: false
+        default: ""
+      region:
+        description: Fly primary region.
+        required: false
+        default: yyz
+      org:
+        description: Fly organization slug. Leave blank to use the token default.
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+      SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+      NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY }}
+      R2_ENDPOINT_URL: ${{ secrets.R2_ENDPOINT_URL }}
+      R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+      R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+      R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
+      DOWNLOAD_SIGNING_SECRET: ${{ secrets.DOWNLOAD_SIGNING_SECRET }}
+      USER_API_KEYS_ENCRYPTION_SECRET: ${{ secrets.USER_API_KEYS_ENCRYPTION_SECRET }}
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install Flyctl
+        uses: superfly/flyctl-actions/setup-flyctl@master
+
+      - name: Verify Docker
+        run: docker --version
+
+      - name: Deploy to Fly
+        run: |
+          args=(--yes --no-write-env-files --build-strategy local)
+
+          if [[ -n "${{ inputs.prefix }}" ]]; then
+            args+=(--prefix "${{ inputs.prefix }}")
+          fi
+
+          if [[ -n "${{ inputs.region }}" ]]; then
+            args+=(--region "${{ inputs.region }}")
+          fi
+
+          if [[ -n "${{ inputs.org }}" ]]; then
+            args+=(--org "${{ inputs.org }}")
+          fi
+
+          ./scripts/deploy-fly.sh "${args[@]}"

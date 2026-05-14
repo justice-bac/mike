@@ -12,8 +12,9 @@ RUN wget -q --header="Host: pki-icp.canada.ca" \
     && rm /tmp/GoC-GdC-Root-A.crt
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates curl libreoffice \
-    && FLYCTL_INSTALL=/usr/local curl -fsSL https://fly.io/install.sh | sh -s -- --non-interactive \
+    && apt-get install -y --no-install-recommends ca-certificates curl gh libreoffice \
+    && curl -fsSL https://fly.io/install.sh | FLYCTL_INSTALL=/usr/local sh -s -- --non-interactive \
+    && ln -sf /usr/local/bin/flyctl /usr/local/bin/fly \
     && rm -rf /var/lib/apt/lists/*
 
 ENV SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt \

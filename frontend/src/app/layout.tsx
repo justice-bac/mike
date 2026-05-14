@@ -3,6 +3,8 @@ import { Inter, EB_Garamond } from "next/font/google";
 import "./globals.css";
 import { Providers } from "@/components/providers";
 
+const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "https://app.mikeoss.com";
+
 const inter = Inter({
     variable: "--font-inter",
     subsets: ["latin"],
@@ -15,7 +17,7 @@ const ebGaramond = EB_Garamond({
 });
 
 export const metadata: Metadata = {
-    metadataBase: new URL("https://app.mikeoss.com"),
+    metadataBase: new URL(siteUrl),
     title: "Mike - AI Legal Platform",
     description:
         "AI-powered legal document analysis and contract review platform.",
@@ -28,7 +30,7 @@ export const metadata: Metadata = {
     },
     openGraph: {
         type: "website",
-        url: "https://app.mikeoss.com",
+        url: siteUrl,
         siteName: "Mike",
         title: "Mike - AI Legal Platform",
         description:

@@ -398,6 +398,32 @@ prepare_temp_fly_config() {
     printf '%s' "${temp_config}"
 }
 
+escape_toml_string() {
+    local value="$1"
+    value="${value//\\/\\\\}"
+    value="${value//\"/\\\"}"
+    printf '%s' "${value}"
+}
+
+append_frontend_build_args() {
+    local config_path="$1"
+    local build_arg_keys=(
+        NEXT_PUBLIC_SITE_URL
+        NEXT_PUBLIC_API_BASE_URL
+        NEXT_PUBLIC_SUPABASE_URL
+        NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY
+    )
+    local key
+    local value
+
+    printf '\n[build.args]\n' >> "${config_path}"
+    for key in "${build_arg_keys[@]}"; do
+        value="${FRONTEND_SECRETS[${key}]:-}"
+        [[ -n "${value}" ]] || die "Missing frontend build arg: ${key}"
+        printf '  %s = "%s"\n' "${key}" "$(escape_toml_string "${value}")" >> "${config_path}"
+    done
+}
+
 append_secret_arg() {
     local array_name="$1"
     local key="$2"
@@ -837,6 +863,7 @@ main() {
 
     backend_config="$(prepare_temp_fly_config "${BACKEND_FLY_CONFIG}" "${backend_app}" "${PRIMARY_REGION}")"
     frontend_config="$(prepare_temp_fly_config "${FRONTEND_FLY_CONFIG}" "${frontend_app}" "${PRIMARY_REGION}")"
+    append_frontend_build_args "${frontend_config}"
 
     local key
     for key in "${!BACKEND_SECRETS[@]}"; do
